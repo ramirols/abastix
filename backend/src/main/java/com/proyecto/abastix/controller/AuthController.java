@@ -30,11 +30,14 @@ public class AuthController {
 
     private final AuthService authService;
     private final boolean cookieSecure;
+    private final String cookieSameSite;
 
     public AuthController(AuthService authService,
-            @Value("${jwt.cookie-secure:false}") boolean cookieSecure) {
+            @Value("${jwt.cookie-secure:false}") boolean cookieSecure,
+            @Value("${jwt.cookie-same-site:Lax}") String cookieSameSite) {
         this.authService = authService;
         this.cookieSecure = cookieSecure;
+        this.cookieSameSite = cookieSameSite;
     }
 
     @PostMapping("/login")
@@ -46,7 +49,7 @@ public class AuthController {
         ResponseCookie cookie = ResponseCookie.from("access_token", authResponse.accessToken())
                 .httpOnly(true)
                 .secure(cookieSecure)
-                .sameSite("Lax")
+                .sameSite(cookieSameSite)
                 .path("/")
                 .maxAge(authResponse.expiresIn())
                 .build();
@@ -64,7 +67,7 @@ public class AuthController {
         ResponseCookie cookie = ResponseCookie.from("access_token", authResponse.accessToken())
                 .httpOnly(true)
                 .secure(cookieSecure)
-                .sameSite("Lax")
+                .sameSite(cookieSameSite)
                 .path("/")
                 .maxAge(authResponse.expiresIn())
                 .build();
@@ -78,7 +81,7 @@ public class AuthController {
         ResponseCookie cookie = ResponseCookie.from("access_token", "")
                 .httpOnly(true)
                 .secure(cookieSecure)
-                .sameSite("Lax")
+                .sameSite(cookieSameSite)
                 .path("/")
                 .maxAge(0)
                 .build();

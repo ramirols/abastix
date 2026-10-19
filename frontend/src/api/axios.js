@@ -5,8 +5,12 @@ function getCookie(name) {
   return match ? decodeURIComponent(match[3]) : null
 }
 
+const rawBaseUrl = import.meta.env.VITE_API_BASE_URL
+// Si se especifica VITE_API_BASE_URL (incluso vacio "" para Docker/Nginx same-origin), se respeta; de lo contrario usa http://localhost:8088
+const apiBaseUrl = typeof rawBaseUrl === 'string' ? rawBaseUrl : 'http://localhost:8088'
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8088',
+  baseURL: apiBaseUrl,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
