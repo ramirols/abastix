@@ -14,6 +14,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -30,45 +31,60 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
         String path = request.getServletPath();
         String method = request.getMethod();
-        // Solo los endpoints publicos de auth saltan el filtro. /me SI debe filtrarse.
-        return "POST".equalsIgnoreCase(method)
-                && ("/api/auth/login".equals(path)
-                        || "/api/auth/refresh".equals(path)
-                        || "/api/auth/logout".equals(path));
+        // Endpoints publicos que no requieren token
+        return ("POST".equalsIgnoreCase(method) && ("/api/auth/login".equals(path) || "/api/auth/refresh".equals(path)))
+                || ("GET".equalsIgnoreCase(method) && "/api/auth/csrf".equals(path))
+                || path.startsWith("/swagger-ui")
+                || path.startsWith("/v3/api-docs")
+                || path.startsWith("/api-docs");
     }
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
             @NonNull HttpServletResponse response,
             @NonNull FilterChain chain) throws ServletException, IOException {
-        String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            String token = header.substring(7);
+
+        String token = extractToken(request);
+
+        if (token != null && !token.isBlank()) {
             try {
                 Claims claims = jwtService.parse(token);
-                if (!"access".equals(claims.get("type", String.class))) {
-                    unauthorized(response, "Token invalido");
-                    return;
+                if ("access".equals(claims.get("type", String.class))) {
+                    String email = claims.getSubject();
+                    String role = claims.get("role", String.class);
+                    List<SimpleGrantedAuthority> authorities = role == null
+                            ? List.of()
+                            : List.of(new SimpleGrantedAuthority(role));
+
+                    UsernamePasswordAuthenticationToken auth =
+                            new UsernamePasswordAuthenticationToken(email, null, authorities);
+                    SecurityContextHolder.getContext().setAuthentication(auth);
                 }
-                String email = claims.getSubject();
-                String role = claims.get("role", String.class);
-                List<SimpleGrantedAuthority> authorities = role == null
-                        ? List.of()
-                        : List.of(new SimpleGrantedAuthority(role));
-                UsernamePasswordAuthenticationToken auth =
-                        new UsernamePasswordAuthenticationToken(email, null, authorities);
-                SecurityContextHolder.getContext().setAuthentication(auth);
             } catch (JwtException e) {
-                unauthorized(response, "Token expirado o invalido");
-                return;
+                // Token expirado o corrupto: se limpia el contexto para que SecurityEntryPoint responda 401
+                SecurityContextHolder.clearContext();
             }
         }
+
         chain.doFilter(request, response);
     }
 
-    private void unauthorized(HttpServletResponse response, String message) throws IOException {
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json");
-        response.getWriter().write("{\"status\":401,\"message\":\"" + message + "\"}");
+    private String extractToken(HttpServletRequest request) {
+        // Prioridad 1: Cookie HttpOnly 'access_token'
+        if (request.getCookies() != null) {
+            for (Cookie cookie : request.getCookies()) {
+                if ("access_token".equals(cookie.getName()) && cookie.getValue() != null && !cookie.getValue().isBlank()) {
+                    return cookie.getValue();
+                }
+            }
+        }
+
+        // Prioridad 2: Encabezado 'Authorization: Bearer <token>'
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            return header.substring(7);
+        }
+
+        return null;
     }
 }

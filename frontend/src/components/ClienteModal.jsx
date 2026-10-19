@@ -1,176 +1,208 @@
+import { useEffect } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import * as z from 'zod'
+import { toast } from 'sonner'
+import { customerService } from '../api/services/customerService'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
 
-import { useEffect, useState } from 'react'
-import api from '../api/axios.js'
+const customerSchema = z.object({
+  fullName: z
+    .string()
+    .trim()
+    .min(3, 'El nombre debe tener al menos 3 caracteres')
+    .max(150, 'Máximo 150 caracteres'),
+  document: z
+    .string()
+    .trim()
+    .min(5, 'El documento debe tener al menos 5 caracteres (DNI / RUC)')
+    .max(30, 'Máximo 30 caracteres'),
+  phone: z
+    .string()
+    .trim()
+    .max(30, 'Máximo 30 caracteres')
+    .optional()
+    .or(z.literal('')),
+  email: z
+    .string()
+    .trim()
+    .email('Formato de correo electrónico inválido')
+    .max(150, 'Máximo 150 caracteres')
+    .optional()
+    .or(z.literal('')),
+})
 
-const empty = {
-  fullName: '',
-  document: '',
-  phone: '',
-  email: '',
-}
+export default function ClienteModal({ open, onOpenChange, initial, onSaved }) {
+  const isEditing = Boolean(initial?.id)
 
-export default function ClienteModal({ initial, onClose, onSaved }) {
-  const [form, setForm] = useState(empty)
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm({
+    resolver: zodResolver(customerSchema),
+    defaultValues: {
+      fullName: '',
+      document: '',
+      phone: '',
+      email: '',
+    },
+  })
 
   useEffect(() => {
     if (initial) {
-      setForm({
+      reset({
         fullName: initial.fullName ?? '',
         document: initial.document ?? '',
         phone: initial.phone ?? '',
         email: initial.email ?? '',
       })
     } else {
-      setForm(empty)
+      reset({
+        fullName: '',
+        document: '',
+        phone: '',
+        email: '',
+      })
     }
-  }, [initial])
+  }, [initial, reset, open])
 
-  function set(field, value) {
-    setForm((f) => ({ ...f, [field]: value }))
-  }
-
-  async function onSubmit(e) {
-    e.preventDefault()
-    setError('')
-    setSaving(true)
-
+  async function onSubmit(data) {
     try {
       const payload = {
-        fullName: form.fullName.trim(),
-        document: form.document.trim(),
-        phone: form.phone.trim() || null,
-        email: form.email.trim() || null,
+        fullName: data.fullName,
+        document: data.document,
+        phone: data.phone || null,
+        email: data.email || null,
       }
 
-      if (initial) {
-        await api.put(`/api/customers/${initial.id}`, payload)
+      if (isEditing) {
+        await customerService.actualizar(initial.id, payload)
+        toast.success(`Cliente "${data.fullName}" actualizado con éxito`)
       } else {
-        await api.post('/api/customers', payload)
+        await customerService.crear(payload)
+        toast.success(`Cliente "${data.fullName}" registrado con éxito`)
       }
-
       onSaved()
+      onOpenChange(false)
     } catch (err) {
-      setError(err.response?.data?.message ?? 'Error al guardar')
-    } finally {
-      setSaving(false)
+      const msg = err.response?.data?.message || 'Error al guardar el cliente'
+      toast.error(msg)
     }
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <form
-        className="modal customer-modal"
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={onSubmit}
-      >
-        <div className="modal-header">
-          <div>
-            <span className="modal-eyebrow">
-              {initial ? 'CLIENTE' : 'NUEVO REGISTRO'}
-            </span>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {isEditing ? 'Editar Cliente' : 'Nuevo Cliente'}
+          </DialogTitle>
+          <DialogDescription>
+            {isEditing
+              ? 'Actualiza los datos de contacto y facturación del cliente.'
+              : 'Registra un nuevo cliente comercial en Abastix.'}
+          </DialogDescription>
+        </DialogHeader>
 
-            <h2>
-              {initial ? 'Editar cliente' : 'Nuevo cliente'}
-            </h2>
-
-            <p>
-              {initial
-                ? 'Actualiza la información del cliente.'
-                : 'Completa la información para registrar el cliente.'}
-            </p>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="customer-fullName">Razón Social / Nombre Completo *</Label>
+            <Input
+              id="customer-fullName"
+              placeholder="Ej. Bodega Don Lucho S.A.C. o Juan Pérez"
+              {...register('fullName')}
+              disabled={isSubmitting}
+            />
+            {errors.fullName && (
+              <p className="text-xs font-medium text-rose-600">
+                {errors.fullName.message}
+              </p>
+            )}
           </div>
 
-          <button
-            type="button"
-            className="modal-close"
-            onClick={onClose}
-            aria-label="Cerrar"
-          >
-            ×
-          </button>
-        </div>
-
-        <div className="modal-body">
-
-          <label className="modal-field">
-            <span>Nombre completo</span>
-
-            <input
-              value={form.fullName}
-              onChange={(e) => set('fullName', e.target.value)}
-              required
-              maxLength={150}
-              placeholder="Nombre completo"
+          <div className="space-y-1.5">
+            <Label htmlFor="customer-document">N° Documento (DNI / RUC / CE) *</Label>
+            <Input
+              id="customer-document"
+              placeholder="Ej. 20601234567 o 45892134"
+              {...register('document')}
+              disabled={isSubmitting}
             />
-          </label>
-
-          <label className="modal-field">
-            <span>Documento</span>
-
-            <input
-              value={form.document}
-              onChange={(e) => set('document', e.target.value)}
-              required
-              maxLength={30}
-              placeholder="Número de documento"
-            />
-          </label>
-
-          <div className="modal-grid-2">
-
-            <label className="modal-field">
-              <span>Teléfono</span>
-
-              <input
-                value={form.phone}
-                onChange={(e) => set('phone', e.target.value)}
-                maxLength={30}
-                placeholder="Teléfono"
-              />
-            </label>
-
-            <label className="modal-field">
-              <span>Email</span>
-
-              <input
-                type="email"
-                value={form.email}
-                onChange={(e) => set('email', e.target.value)}
-                maxLength={150}
-                placeholder="Correo electrónico"
-              />
-            </label>
-
+            {errors.document && (
+              <p className="text-xs font-medium text-rose-600">
+                {errors.document.message}
+              </p>
+            )}
           </div>
 
-          {error && (
-            <div className="modal-error">
-              <span>!</span>
-
-              <p>{error}</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="customer-phone">Teléfono / Celular</Label>
+              <Input
+                id="customer-phone"
+                placeholder="Ej. 987654321"
+                {...register('phone')}
+                disabled={isSubmitting}
+              />
+              {errors.phone && (
+                <p className="text-xs font-medium text-rose-600">
+                  {errors.phone.message}
+                </p>
+              )}
             </div>
-          )}
 
-        </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="customer-email">Correo Electrónico</Label>
+              <Input
+                id="customer-email"
+                type="email"
+                placeholder="cliente@ejemplo.pe"
+                {...register('email')}
+                disabled={isSubmitting}
+              />
+              {errors.email && (
+                <p className="text-xs font-medium text-rose-600">
+                  {errors.email.message}
+                </p>
+              )}
+            </div>
+          </div>
 
-        <div className="modal-actions">
-          <button
-            type="button"
-            className="secondary"
-            onClick={onClose}
-            disabled={saving}
-          >
-            Cancelar
-          </button>
-
-          <button type="submit" disabled={saving}>
-            {saving ? 'Guardando...' : 'Guardar'}
-          </button>
-        </div>
-      </form>
-    </div>
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isSubmitting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white"
+            >
+              {isSubmitting
+                ? 'Guardando...'
+                : isEditing
+                ? 'Guardar Cambios'
+                : 'Registrar Cliente'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
-

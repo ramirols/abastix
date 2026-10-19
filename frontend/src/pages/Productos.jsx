@@ -1,282 +1,372 @@
-
-import { useEffect, useState } from 'react'
-import api from '../api/axios.js'
-import { useAuth } from '../context/AuthContext.jsx'
-import ProductoModal from '../components/ProductoModal.jsx'
+import { useEffect, useState, useMemo } from 'react'
+import {
+  Package,
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  AlertTriangle,
+  RefreshCw,
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { productService } from '../api/services/productService'
+import { categoryService } from '../api/services/categoryService'
+import { useAuth } from '../context/AuthContext'
+import ProductoModal from '../components/ProductoModal'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { AlertDialog } from '@/components/ui/alert-dialog'
+import { Select } from '@/components/ui/select'
 
 export default function Productos() {
-  const { user } = useAuth()
-  const isAdmin = user?.role === 'ROLE_ADMIN'
-
+  const { isAdmin } = useAuth()
   const [items, setItems] = useState([])
-  const [filter, setFilter] = useState('all')
-  const [error, setError] = useState('')
-  const [modal, setModal] = useState(null)
+  const [categories, setCategories] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
 
-  async function load() {
-    setError('')
+  const [modalState, setModalState] = useState(null) // null | { mode: 'create' | 'edit', item: ... }
+  const [confirmDialog, setConfirmDialog] = useState(null) // null | { type: 'deactivate' | 'activate' | 'delete', item: ... }
 
+  async function loadData() {
+    setLoading(true)
     try {
-      const params =
-        isAdmin && filter !== 'all'
-          ? { active: filter === 'active' }
-          : {}
-
-      const { data } = await api.get('/api/products', { params })
-
-      setItems(data)
+      const [prods, cats] = await Promise.all([
+        productService.listar(isAdmin ? null : true),
+        categoryService.listar(),
+      ])
+      setItems(prods)
+      setCategories(cats)
     } catch (err) {
-      setError(
-        err.response?.data?.message ??
-        'Error al cargar productos'
-      )
+      toast.error('Error al cargar productos', {
+        description: err.response?.data?.message ?? 'Verifica la conexión con el backend',
+      })
+    } finally {
+      setLoading(false)
     }
   }
 
   useEffect(() => {
-    load()
+    loadData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter])
+  }, [])
 
-  async function onToggle(p) {
-    const action = p.active ? 'deactivate' : 'activate'
-    const label = p.active ? 'Desactivar' : 'Activar'
+  // Filtrado reactivo en cliente (por búsqueda de nombre/SKU, categoría y estado)
+  const filteredProducts = useMemo(() => {
+    return items.filter((p) => {
+      const matchesSearch =
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.sku.toLowerCase().includes(searchTerm.toLowerCase())
 
-    if (!window.confirm(`¿${label} este producto?`)) return
+      const matchesCategory =
+        categoryFilter === 'all' || String(p.categoryId) === String(categoryFilter)
 
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' && p.active) ||
+        (statusFilter === 'inactive' && !p.active) ||
+        (statusFilter === 'low_stock' && p.active && p.stock <= p.minStock)
+
+      return matchesSearch && matchesCategory && matchesStatus
+    })
+  }, [items, searchTerm, categoryFilter, statusFilter])
+
+  async function handleConfirmAction() {
+    if (!confirmDialog) return
+    const { type, item } = confirmDialog
     try {
-      await api.patch(`/api/products/${p.id}/${action}`)
-      load()
+      if (type === 'deactivate') {
+        await productService.desactivar(item.id)
+        toast.success(`Producto "${item.name}" desactivado`)
+      } else if (type === 'activate') {
+        await productService.activar(item.id)
+        toast.success(`Producto "${item.name}" activado`)
+      } else if (type === 'delete') {
+        await productService.eliminar(item.id)
+        toast.success(`Producto "${item.name}" eliminado del catálogo`)
+      }
+      setConfirmDialog(null)
+      loadData()
     } catch (err) {
-      const status = err.response?.status
-
-      const msg =
-        err.response?.data?.message ??
-        (
-          err.request
-            ? 'Sin respuesta del servidor (red/CORS)'
-            : err.message
-        )
-
-      setError(
-        status
-          ? `Error ${status}: ${msg}`
-          : `Error al cambiar estado: ${msg}`
-      )
+      toast.error('Error al realizar la acción', {
+        description: err.response?.data?.message ?? 'No se pudo completar la operación',
+      })
     }
   }
 
   return (
-    <main className="products-page">
-      <div className="products-container">
+    <div className="space-y-6 animate-in fade-in duration-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200/80">
+        <div>
+          <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider block">
+            CATÁLOGO
+          </span>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            Productos
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Administra los precios, códigos SKU y control de inventario de cada producto.
+          </p>
+        </div>
 
-        <header className="products-header">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadData}
+            disabled={loading}
+            className="gap-1.5 text-xs text-slate-700"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </Button>
+
+          {isAdmin && (
+            <Button
+              size="sm"
+              onClick={() => setModalState({ mode: 'create' })}
+              className="bg-[#166534] hover:bg-[#14532d] text-white gap-1.5 text-xs font-semibold shadow-xs"
+            >
+              <Plus className="h-4 w-4" />
+              Nuevo Producto
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Barra de Filtros y Búsqueda */}
+      <Card className="shadow-xs border-slate-200">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+            <div className="sm:col-span-6 relative">
+              <Input
+                placeholder="Buscar por nombre de producto o SKU..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 text-xs sm:text-sm"
+              />
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            </div>
+
+            <div className="sm:col-span-3">
+              <Select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="text-xs sm:text-sm"
+              >
+                <option value="all">Todas las Categorías</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="sm:col-span-3">
+              <Select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="text-xs sm:text-sm"
+              >
+                <option value="all">Todos los Estados</option>
+                <option value="active">Solo Activos</option>
+                {isAdmin && <option value="inactive">Inactivos</option>}
+                <option value="low_stock">Stock Bajo (Crítico)</option>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Tabla de Productos */}
+      <Card className="shadow-xs border-slate-200 overflow-hidden">
+        <CardHeader className="py-4 px-6 border-b border-slate-100 flex flex-row items-center justify-between">
           <div>
-            <span className="products-eyebrow">
-              CATÁLOGO
-            </span>
-
-            <h1>Productos</h1>
-
-            <p>
-              Administra los productos registrados en Abastix.
-            </p>
+            <CardTitle className="text-base font-bold text-slate-900">
+              Inventario de Productos
+            </CardTitle>
+            <CardDescription className="text-xs">
+              {filteredProducts.length} {filteredProducts.length === 1 ? 'producto encontrado' : 'productos encontrados'}
+            </CardDescription>
           </div>
-
-          <div className="products-actions">
-
-            {isAdmin && (
-              <select
-                className="products-filter"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-              >
-                <option value="all">Todos</option>
-                <option value="active">Activos</option>
-                <option value="inactive">Inactivos</option>
-              </select>
-            )}
-
-            {isAdmin && (
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => setModal({ mode: 'create' })}
-              >
-                <span>+</span>
-                Nuevo producto
-              </button>
-            )}
-
-          </div>
-        </header>
-
-        {error && (
-          <div className="products-error">
-            <span>!</span>
-
-            <div>
-              <strong>No se pudo completar la operación</strong>
-              <p>{error}</p>
-            </div>
-          </div>
-        )}
-
-        <section className="products-card">
-
-          <div className="products-card-head">
-            <div>
-              <strong>Lista de productos</strong>
-              <span>
-                {items.length} {items.length === 1 ? 'producto' : 'productos'}
-              </span>
-            </div>
-          </div>
-
-          <div className="products-table-wrap">
-            <table className="products-table">
-              <thead>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider">
                 <tr>
-                  <th>Producto</th>
-                  <th>SKU</th>
-                  <th>Categoría</th>
-                  <th>Precio</th>
-                  <th>Stock</th>
-                  <th>Estado</th>
-                  {isAdmin && <th>Acciones</th>}
+                  <th className="py-3 px-4">Producto</th>
+                  <th className="py-3 px-4">SKU</th>
+                  <th className="py-3 px-4">Categoría</th>
+                  <th className="py-3 px-4">Precio</th>
+                  <th className="py-3 px-4">Stock</th>
+                  <th className="py-3 px-4">Estado</th>
+                  {isAdmin && <th className="py-3 px-4 text-right">Acciones</th>}
                 </tr>
               </thead>
-
-              <tbody>
-                {items.map((p) => (
-                  <tr
-                    key={p.id}
-                    className={p.active ? '' : 'inactive'}
-                  >
-                    <td>
-                      <div className="product-name">
-                        <strong>{p.name}</strong>
-                      </div>
-                    </td>
-
-                    <td>
-                      <span className="product-sku">
-                        {p.sku}
-                      </span>
-                    </td>
-
-                    <td>
-                      <span className="product-category">
-                        {p.categoryName}
-                      </span>
-                    </td>
-
-                    <td>
-                      <strong className="product-price">
-                        S/ {Number(p.price).toFixed(2)}
-                      </strong>
-                    </td>
-
-                    <td>
-                      <div className="stock-cell">
-                        <span>{p.stock}</span>
-
-                        {p.stock <= p.minStock && (
-                          <span className="stock-warning">
-                            bajo
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td>
-                      <span
-                        className={
-                          p.active
-                            ? 'status-badge active'
-                            : 'status-badge inactive'
-                        }
-                      >
-                        <span />
-                        {p.active ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </td>
-
-                    {isAdmin && (
-                      <td>
-                        <div className="product-row-actions">
-
-                          <button
-                            type="button"
-                            className="edit-button"
-                            onClick={() =>
-                              setModal({
-                                mode: 'edit',
-                                item: p,
-                              })
-                            }
-                          >
-                            Editar
-                          </button>
-
-                          {p.active ? (
-                            <button
-                              type="button"
-                              className="danger-button"
-                              onClick={() => onToggle(p)}
-                            >
-                              Desactivar
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="activate-button"
-                              onClick={() => onToggle(p)}
-                            >
-                              Activar
-                            </button>
-                          )}
-
-                        </div>
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i}>
+                      <td colSpan={isAdmin ? 7 : 6} className="p-4 text-center text-slate-400">
+                        Cargando catálogo...
                       </td>
-                    )}
-                  </tr>
-                ))}
+                    </tr>
+                  ))
+                ) : filteredProducts.length > 0 ? (
+                  filteredProducts.map((p) => {
+                    const isLowStock = p.active && p.stock <= p.minStock
+                    return (
+                      <tr
+                        key={p.id}
+                        className={`hover:bg-slate-50/70 transition-colors ${!p.active ? 'opacity-60 bg-slate-50/40' : ''}`}
+                      >
+                        <td className="py-3.5 px-4 font-semibold text-slate-900 text-sm">
+                          {p.name}
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-slate-600 font-medium">
+                          {p.sku}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600">
+                          <span className="inline-block bg-slate-100 px-2 py-0.5 rounded text-[11px] font-medium text-slate-700">
+                            {p.categoryName || 'Sin Categoría'}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 font-bold text-[#166534] text-sm">
+                          S/ {Number(p.price).toFixed(2)}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-900">{p.stock}</span>
+                            {isLowStock && (
+                              <Badge variant="warning" className="text-[10px] py-0 px-1.5 flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3" />
+                                Bajo stock (mín: {p.minStock})
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          {p.active ? (
+                            <Badge variant="success">Activo</Badge>
+                          ) : (
+                            <Badge variant="secondary">Inactivo</Badge>
+                          )}
+                        </td>
 
-                {items.length === 0 && (
+                        {isAdmin && (
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setModalState({ mode: 'edit', item: p })}
+                                className="h-7 px-2 text-xs gap-1 text-slate-700 cursor-pointer"
+                                title="Editar producto"
+                              >
+                                <Edit className="h-3 w-3" />
+                                Editar
+                              </Button>
+
+                              {p.active ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setConfirmDialog({ type: 'deactivate', item: p })}
+                                  className="h-7 px-2 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-50 cursor-pointer"
+                                  title="Desactivar producto"
+                                >
+                                  Desactivar
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setConfirmDialog({ type: 'activate', item: p })}
+                                  className="h-7 px-2 text-xs text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 cursor-pointer"
+                                  title="Activar producto"
+                                >
+                                  Activar
+                                </Button>
+                              )}
+
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setConfirmDialog({ type: 'delete', item: p })}
+                                className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                                title="Eliminar producto"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    )
+                  })
+                ) : (
                   <tr>
-                    <td
-                      colSpan={isAdmin ? 7 : 6}
-                      className="products-empty"
-                    >
-                      No hay productos para mostrar
+                    <td colSpan={isAdmin ? 7 : 6} className="py-12 text-center text-slate-400">
+                      <Package className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                      No se encontraron productos que coincidan con los filtros aplicados.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+        </CardContent>
+      </Card>
 
-        </section>
-
-      </div>
-
-      {modal && (
+      {/* Modal Crear / Editar */}
+      {modalState && (
         <ProductoModal
-          initial={
-            modal.mode === 'edit'
-              ? modal.item
-              : null
-          }
-          onClose={() => setModal(null)}
+          initial={modalState.mode === 'edit' ? modalState.item : null}
+          onClose={() => setModalState(null)}
           onSaved={() => {
-            setModal(null)
-            load()
+            setModalState(null)
+            loadData()
           }}
         />
       )}
 
-    </main>
+      {/* Dialog de Confirmación de Acción */}
+      {confirmDialog && (
+        <AlertDialog
+          open={true}
+          onOpenChange={() => setConfirmDialog(null)}
+          title={
+            confirmDialog.type === 'delete'
+              ? `¿Eliminar "${confirmDialog.item.name}"?`
+              : confirmDialog.type === 'deactivate'
+              ? `¿Desactivar "${confirmDialog.item.name}"?`
+              : `¿Activar "${confirmDialog.item.name}"?`
+          }
+          description={
+            confirmDialog.type === 'delete'
+              ? 'El producto será dado de baja del catálogo activo. Esta acción es registrada en el registro de auditoría.'
+              : confirmDialog.type === 'deactivate'
+              ? 'El producto no estará visible para ventas por los colaboradores.'
+              : 'El producto volverá a estar disponible para su venta en el sistema.'
+          }
+          confirmText={
+            confirmDialog.type === 'delete'
+              ? 'Sí, eliminar'
+              : confirmDialog.type === 'deactivate'
+              ? 'Sí, desactivar'
+              : 'Sí, activar'
+          }
+          variant={confirmDialog.type === 'activate' ? 'default' : 'destructive'}
+          onConfirm={handleConfirmAction}
+        />
+      )}
+    </div>
   )
 }
-

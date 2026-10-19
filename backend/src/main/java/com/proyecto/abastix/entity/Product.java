@@ -11,17 +11,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 @Entity
 @Table(name = "products")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
 public class Product {
 
     @Id
@@ -49,4 +41,82 @@ public class Product {
 
     @Column(name = "active", nullable = false)
     private Boolean active;
+
+    public Product() {
+    }
+
+    public Product(Integer id, Category category, String name, String sku, BigDecimal price, Integer stock, Integer minStock, Boolean active) {
+        this.id = id;
+        this.category = category;
+        this.name = name;
+        this.sku = sku;
+        this.price = price;
+        this.stock = stock;
+        this.minStock = minStock;
+        this.active = active;
+    }
+
+    public Integer getId() {
+        return id;
+    }
+
+    public void setId(Integer id) {
+        this.id = id;
+    }
+
+    public Category getCategory() {
+        return category;
+    }
+
+    public void setCategory(Category category) {
+        this.category = category;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getSku() {
+        return sku;
+    }
+
+    public void setSku(String sku) {
+        this.sku = sku;
+    }
+
+    public BigDecimal getPrice() {
+        return price;
+    }
+
+    public void setPrice(BigDecimal price) {
+        this.price = price;
+    }
+
+    public Integer getStock() {
+        return stock;
+    }
+
+    public void setStock(Integer stock) {
+        this.stock = stock;
+    }
+
+    public Integer getMinStock() {
+        return minStock;
+    }
+
+    public void setMinStock(Integer minStock) {
+        this.minStock = minStock;
+    }
+
+    public Boolean getActive() {
+        return active;
+    }
+
+    public void setActive(Boolean active) {
+        this.active = active;
+    }
 }

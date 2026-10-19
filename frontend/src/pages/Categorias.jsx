@@ -1,313 +1,440 @@
-
-import { useEffect, useState } from 'react'
-import api from '../api/axios.js'
-import { useAuth } from '../context/AuthContext.jsx'
+import { useEffect, useState, useMemo } from 'react'
+import {
+  FolderPlus,
+  Search,
+  Edit2,
+  Power,
+  Trash2,
+  RefreshCw,
+  FolderTree,
+  AlertCircle,
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { useAuth } from '../context/AuthContext'
+import { categoryService } from '../api/services/categoryService'
+import CategoriaModal from '../components/CategoriaModal'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
+import { Badge } from '../components/ui/badge'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '../components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog'
+import { Skeleton } from '../components/ui/skeleton'
 
 export default function Categorias() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'ROLE_ADMIN'
 
-  const [items, setItems] = useState([])
-  const [name, setName] = useState('')
-  const [editing, setEditing] = useState(null)
-  const [error, setError] = useState('')
+  const [categories, setCategories] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all') // all, active, inactive
 
-  async function load() {
-    setError('')
+  // Modals state
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState(null)
 
+  // Confirm dialogs
+  const [confirmToggle, setConfirmToggle] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+  const [actionLoading, setActionLoading] = useState(false)
+
+  async function loadCategories() {
+    setLoading(true)
     try {
-      const { data } = await api.get('/api/categories')
-      setItems(data)
+      const data = await categoryService.listar()
+      setCategories(Array.isArray(data) ? data : [])
     } catch (err) {
-      setError(
-        err.response?.data?.message ??
-        'Error al cargar categorías'
-      )
+      toast.error('Error al cargar la lista de categorías')
+    } finally {
+      setLoading(false)
     }
   }
 
   useEffect(() => {
-    load()
+    loadCategories()
   }, [])
 
-  async function onCreate(e) {
-    e.preventDefault()
-    setError('')
+  const filteredCategories = useMemo(() => {
+    return categories.filter((cat) => {
+      const matchesSearch = cat.name.toLowerCase().includes(search.toLowerCase())
+      const matchesStatus =
+        statusFilter === 'all'
+          ? true
+          : statusFilter === 'active'
+          ? cat.active
+          : !cat.active
+      return matchesSearch && matchesStatus
+    })
+  }, [categories, search, statusFilter])
 
+  async function handleToggleStatus() {
+    if (!confirmToggle) return
+    setActionLoading(true)
     try {
-      await api.post('/api/categories', {
-        name: name.trim(),
-      })
-
-      setName('')
-      load()
+      if (confirmToggle.active) {
+        await categoryService.desactivar(confirmToggle.id)
+        toast.success(`Categoría "${confirmToggle.name}" desactivada`)
+      } else {
+        await categoryService.activar(confirmToggle.id)
+        toast.success(`Categoría "${confirmToggle.name}" activada`)
+      }
+      await loadCategories()
     } catch (err) {
-      setError(
-        err.response?.data?.message ??
-        'Error al crear'
-      )
+      toast.error(err.response?.data?.message || 'Error al cambiar estado')
+    } finally {
+      setActionLoading(false)
+      setConfirmToggle(null)
     }
   }
 
-  async function onUpdate(e) {
-    e.preventDefault()
-    setError('')
-
+  async function handleDelete() {
+    if (!confirmDelete) return
+    setActionLoading(true)
     try {
-      await api.put(
-        `/api/categories/${editing.id}`,
-        {
-          name: editing.name.trim(),
-        }
-      )
-
-      setEditing(null)
-      load()
+      await categoryService.eliminar(confirmDelete.id)
+      toast.success(`Categoría "${confirmDelete.name}" eliminada`)
+      await loadCategories()
     } catch (err) {
-      setError(
-        err.response?.data?.message ??
-        'Error al actualizar'
+      toast.error(
+        err.response?.data?.message ||
+          'No se puede eliminar la categoría porque tiene productos asociados'
       )
+    } finally {
+      setActionLoading(false)
+      setConfirmDelete(null)
     }
   }
 
-  async function onToggle(c) {
-    const action = c.active
-      ? 'deactivate'
-      : 'activate'
-
-    const label = c.active
-      ? 'Desactivar'
-      : 'Activar'
-
-    if (!window.confirm(`¿${label} esta categoría?`)) {
-      return
-    }
-
-    try {
-      await api.patch(
-        `/api/categories/${c.id}/${action}`
-      )
-
-      load()
-    } catch (err) {
-      const status = err.response?.status
-
-      const msg =
-        err.response?.data?.message ??
-        (
-          err.request
-            ? 'Sin respuesta del servidor (red/CORS)'
-            : err.message
-        )
-
-      setError(
-        status
-          ? `Error ${status}: ${msg}`
-          : `Error al cambiar estado: ${msg}`
-      )
-    }
-  }
+  const activeCount = categories.filter((c) => c.active).length
+  const inactiveCount = categories.length - activeCount
 
   return (
-    <main className="categories-page">
-      <div className="categories-container">
-
-        <header className="categories-header">
-          <div>
-            <span className="categories-eyebrow">
-              CATÁLOGO
-            </span>
-
-            <h1>Categorías</h1>
-
-            <p>
-              Administra las categorías registradas en Abastix.
-            </p>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-700">
+            <FolderTree className="h-4 w-4" />
+            <span>Catálogo Comercial</span>
           </div>
-        </header>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+            Gestión de Categorías
+          </h1>
+          <p className="text-sm text-slate-500">
+            Organiza las familias de productos para facilitar el inventario y las ventas.
+          </p>
+        </div>
 
-        {error && (
-          <div className="categories-error">
-            <span>!</span>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadCategories}
+            disabled={loading}
+            className="gap-1.5"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Actualizar</span>
+          </Button>
 
-            <div>
-              <strong>No se pudo completar la operación</strong>
-              <p>{error}</p>
-            </div>
-          </div>
-        )}
-
-        {isAdmin && (
-          <section className="category-form-card">
-
-            <div className="category-form-info">
-              <span>
-                {editing ? 'EDITAR CATEGORÍA' : 'NUEVA CATEGORÍA'}
-              </span>
-
-              <strong>
-                {editing
-                  ? 'Actualizar categoría'
-                  : 'Crear categoría'}
-              </strong>
-
-              <p>
-                {editing
-                  ? 'Modifica el nombre de la categoría seleccionada.'
-                  : 'Ingresa un nombre para registrar una nueva categoría.'}
-              </p>
-            </div>
-
-            <form
-              className="category-form"
-              onSubmit={editing ? onUpdate : onCreate}
+          {isAdmin && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setSelectedCategory(null)
+                setIsModalOpen(true)
+              }}
+              className="gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm"
             >
-              <input
-                placeholder="Nombre de categoría"
-                value={editing ? editing.name : name}
-                onChange={(e) =>
-                  editing
-                    ? setEditing({
-                        ...editing,
-                        name: e.target.value,
-                      })
-                    : setName(e.target.value)
-                }
-                required
-                maxLength={100}
-              />
+              <FolderPlus className="h-4 w-4" />
+              <span>Nueva Categoría</span>
+            </Button>
+          )}
+        </div>
+      </div>
 
-              <button type="submit" className="primary-button">
-                {editing ? 'Actualizar' : 'Crear'}
-              </button>
+      {/* KPI mini-cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card className="p-4 bg-gradient-to-br from-emerald-50 to-white border-emerald-100">
+          <p className="text-xs font-medium text-emerald-800">Total Categorías</p>
+          <p className="text-2xl font-bold text-emerald-950 mt-1">{categories.length}</p>
+        </Card>
+        <Card className="p-4 bg-white border-slate-200">
+          <p className="text-xs font-medium text-slate-600">Categorías Activas</p>
+          <p className="text-2xl font-bold text-slate-900 mt-1">{activeCount}</p>
+        </Card>
+        <Card className="p-4 bg-white border-slate-200">
+          <p className="text-xs font-medium text-slate-600">Categorías Inactivas</p>
+          <p className="text-2xl font-bold text-slate-500 mt-1">{inactiveCount}</p>
+        </Card>
+      </div>
 
-              {editing && (
+      {/* Main Table Card */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-lg">Catálogo de Categorías</CardTitle>
+              <CardDescription>
+                {filteredCategories.length} categorías encontradas
+              </CardDescription>
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder="Buscar categoría..."
+                  className="pl-8 text-sm"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="flex rounded-md shadow-sm border border-slate-200 overflow-hidden text-xs font-medium">
                 <button
                   type="button"
-                  className="secondary-button"
-                  onClick={() => setEditing(null)}
+                  onClick={() => setStatusFilter('all')}
+                  className={`px-3 py-2 transition-colors ${
+                    statusFilter === 'all'
+                      ? 'bg-emerald-700 text-white font-semibold'
+                      : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
                 >
-                  Cancelar
+                  Todas
                 </button>
-              )}
-            </form>
-
-          </section>
-        )}
-
-        <section className="categories-card">
-
-          <div className="categories-card-head">
-            <div>
-              <strong>Lista de categorías</strong>
-
-              <span>
-                {items.length}{' '}
-                {items.length === 1
-                  ? 'categoría'
-                  : 'categorías'}
-              </span>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('active')}
+                  className={`px-3 py-2 transition-colors border-l border-r border-slate-200 ${
+                    statusFilter === 'active'
+                      ? 'bg-emerald-700 text-white font-semibold'
+                      : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Activas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('inactive')}
+                  className={`px-3 py-2 transition-colors ${
+                    statusFilter === 'inactive'
+                      ? 'bg-emerald-700 text-white font-semibold'
+                      : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Inactivas
+                </button>
+              </div>
             </div>
           </div>
+        </CardHeader>
 
-          <div className="categories-table-wrap">
-            <table className="categories-table">
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Estado</th>
-                  {isAdmin && <th>Acciones</th>}
-                </tr>
-              </thead>
-
-              <tbody>
-                {items.map((c) => (
-                  <tr
-                    key={c.id}
-                    className={c.active ? '' : 'inactive'}
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50/75">
+                <TableHead className="w-16">ID</TableHead>
+                <TableHead>Nombre</TableHead>
+                <TableHead className="w-32">Estado</TableHead>
+                {isAdmin && <TableHead className="w-40 text-right">Acciones</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                    {isAdmin && <TableCell><Skeleton className="h-8 w-28 ml-auto" /></TableCell>}
+                  </TableRow>
+                ))
+              ) : filteredCategories.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={isAdmin ? 4 : 3}
+                    className="h-32 text-center text-slate-500"
                   >
-                    <td>
-                      <strong className="category-name">
+                    <div className="flex flex-col items-center justify-center gap-1.5">
+                      <AlertCircle className="h-6 w-6 text-slate-400" />
+                      <p className="font-medium text-slate-700">No se encontraron categorías</p>
+                      <p className="text-xs text-slate-500">
+                        {search ? 'Intenta modificar el término de búsqueda.' : 'Crea tu primera categoría para organizar los productos.'}
+                      </p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredCategories.map((c) => (
+                  <TableRow
+                    key={c.id}
+                    className={!c.active ? 'bg-slate-50/50 opacity-75' : ''}
+                  >
+                    <TableCell className="font-mono text-xs text-slate-500">
+                      #{c.id}
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-semibold text-slate-900">
                         {c.name}
-                      </strong>
-                    </td>
-
-                    <td>
-                      <span
-                        className={
-                          c.active
-                            ? 'status-badge active'
-                            : 'status-badge inactive'
-                        }
-                      >
-                        <span />
-                        {c.active
-                          ? 'Activa'
-                          : 'Inactiva'}
                       </span>
-                    </td>
-
+                    </TableCell>
+                    <TableCell>
+                      {c.active ? (
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
+                          Activa
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-slate-500 border-slate-300">
+                          Inactiva
+                        </Badge>
+                      )}
+                    </TableCell>
                     {isAdmin && (
-                      <td>
-                        <div className="category-row-actions">
-
-                          <button
-                            type="button"
-                            className="edit-button"
-                            onClick={() =>
-                              setEditing({
-                                id: c.id,
-                                name: c.name,
-                              })
-                            }
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-600 hover:text-emerald-700"
+                            onClick={() => {
+                              setSelectedCategory(c)
+                              setIsModalOpen(true)
+                            }}
+                            title="Editar"
                           >
-                            Editar
-                          </button>
-
-                          {c.active ? (
-                            <button
-                              type="button"
-                              className="danger-button"
-                              onClick={() => onToggle(c)}
-                            >
-                              Desactivar
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="activate-button"
-                              onClick={() => onToggle(c)}
-                            >
-                              Activar
-                            </button>
-                          )}
-
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-8 w-8 ${
+                              c.active
+                                ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-50'
+                                : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
+                            }`}
+                            onClick={() => setConfirmToggle(c)}
+                            title={c.active ? 'Desactivar' : 'Activar'}
+                          >
+                            <Power className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                            onClick={() => setConfirmDelete(c)}
+                            title="Eliminar"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
-                      </td>
+                      </TableCell>
                     )}
-                  </tr>
-                ))}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
-                {items.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={isAdmin ? 3 : 2}
-                      className="categories-empty"
-                    >
-                      No hay categorías para mostrar
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+      {/* Modal Creación / Edición */}
+      <CategoriaModal
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        initial={selectedCategory}
+        onSaved={loadCategories}
+      />
 
-        </section>
+      {/* Dialog Confirmación Activar/Desactivar */}
+      <AlertDialog
+        open={Boolean(confirmToggle)}
+        onOpenChange={(open) => !open && setConfirmToggle(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmToggle?.active
+                ? '¿Desactivar categoría?'
+                : '¿Activar categoría?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmToggle?.active
+                ? `Al desactivar la categoría "${confirmToggle?.name}", no aparecerá como opción disponible para nuevos productos.`
+                : `La categoría "${confirmToggle?.name}" volverá a estar activa y visible para nuevos registros.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleToggleStatus}
+              disabled={actionLoading}
+              className={
+                confirmToggle?.active
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                  : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+              }
+            >
+              {actionLoading
+                ? 'Procesando...'
+                : confirmToggle?.active
+                ? 'Sí, desactivar'
+                : 'Sí, activar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      </div>
-    </main>
+      {/* Dialog Confirmación Eliminar */}
+      <AlertDialog
+        open={Boolean(confirmDelete)}
+        onOpenChange={(open) => !open && setConfirmDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar categoría definitivamente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se eliminará permanentemente la
+              categoría <strong>&quot;{confirmDelete?.name}&quot;</strong>. Si tiene
+              productos asociados en la base de datos, el servidor rechazará la operación por integridad referencial.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={actionLoading}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              {actionLoading ? 'Eliminando...' : 'Sí, eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   )
 }
-
-

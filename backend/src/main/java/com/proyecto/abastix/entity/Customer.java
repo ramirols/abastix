@@ -6,17 +6,9 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 @Entity
 @Table(name = "customers")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
 public class Customer {
 
     @Id
@@ -37,4 +29,64 @@ public class Customer {
 
     @Column(name = "active", nullable = false)
     private Boolean active;
+
+    public Customer() {
+    }
+
+    public Customer(Integer id, String fullName, String document, String phone, String email, Boolean active) {
+        this.id = id;
+        this.fullName = fullName;
+        this.document = document;
+        this.phone = phone;
+        this.email = email;
+        this.active = active;
+    }
+
+    public Integer getId() {
+        return id;
+    }
+
+    public void setId(Integer id) {
+        this.id = id;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    public String getDocument() {
+        return document;
+    }
+
+    public void setDocument(String document) {
+        this.document = document;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public Boolean getActive() {
+        return active;
+    }
+
+    public void setActive(Boolean active) {
+        this.active = active;
+    }
 }

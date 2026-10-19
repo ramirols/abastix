@@ -11,17 +11,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 @Entity
 @Table(name = "audit_logs")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
 public class Log {
 
     @Id
@@ -40,4 +32,55 @@ public class Log {
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    public Log() {
+    }
+
+    public Log(Integer id, User user, String action, String entity, LocalDateTime createdAt) {
+        this.id = id;
+        this.user = user;
+        this.action = action;
+        this.entity = entity;
+        this.createdAt = createdAt;
+    }
+
+    public Integer getId() {
+        return id;
+    }
+
+    public void setId(Integer id) {
+        this.id = id;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public String getAction() {
+        return action;
+    }
+
+    public void setAction(String action) {
+        this.action = action;
+    }
+
+    public String getEntity() {
+        return entity;
+    }
+
+    public void setEntity(String entity) {
+        this.entity = entity;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
 }

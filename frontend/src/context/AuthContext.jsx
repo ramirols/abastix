@@ -1,49 +1,85 @@
-import { createContext, useCallback, useContext, useState } from 'react'
-import api from '../api/axios.js'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { authService } from '../api/services/authService'
 
 const AuthContext = createContext(null)
 
-function loadUser() {
-  try {
-    const raw = localStorage.getItem('abastix_user')
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(loadUser)
+  const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+
+  // Comprobar la sesión activa con el backend mediante cookies HttpOnly
+  useEffect(() => {
+    let mounted = true
+
+    async function checkSession() {
+      try {
+        const userData = await authService.getMe()
+        if (mounted) {
+          setUser(userData)
+        }
+      } catch {
+        if (mounted) {
+          setUser(null)
+        }
+      } finally {
+        if (mounted) {
+          setIsCheckingAuth(false)
+        }
+      }
+    }
+
+    checkSession()
+
+    // Escuchar expiración de sesión (401)
+    const handleUnauthorized = () => {
+      setUser(null)
+    }
+    window.addEventListener('abastix:unauthorized', handleUnauthorized)
+
+    return () => {
+      mounted = false
+      window.removeEventListener('abastix:unauthorized', handleUnauthorized)
+    }
+  }, [])
 
   const login = useCallback(async (email, password) => {
     setLoading(true)
     try {
-      const { data } = await api.post('/api/auth/login', { email, password })
-      localStorage.setItem('abastix_access', data.accessToken)
-      localStorage.setItem('abastix_refresh', data.refreshToken)
-      localStorage.setItem('abastix_user', JSON.stringify(data.user))
-      setUser(data.user)
-      return data.user
+      const userData = await authService.login(email, password)
+      setUser(userData)
+      return userData
     } finally {
       setLoading(false)
     }
   }, [])
 
   const logout = useCallback(async () => {
+    setLoading(true)
     try {
-      await api.post('/api/auth/logout')
-    } catch {
-      // stateless: igual limpiamos en cliente
+      await authService.logout()
+    } finally {
+      setUser(null)
+      setLoading(false)
     }
-    localStorage.removeItem('abastix_access')
-    localStorage.removeItem('abastix_refresh')
-    localStorage.removeItem('abastix_user')
-    setUser(null)
   }, [])
 
+  const isAdmin = user?.role === 'ROLE_ADMIN'
+  const isEmployee = user?.role === 'ROLE_EMPLEADO' || isAdmin
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAdmin,
+        isEmployee,
+        loading,
+        isCheckingAuth,
+        login,
+        logout,
+        setUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
