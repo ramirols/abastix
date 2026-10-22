@@ -6,8 +6,10 @@ export function getCookie(name) {
 }
 
 const rawBaseUrl = import.meta.env.VITE_API_BASE_URL
-// Si se especifica VITE_API_BASE_URL (incluso vacio "" para Docker/Nginx same-origin), se respeta; de lo contrario usa http://localhost:8088
-const apiBaseUrl = typeof rawBaseUrl === 'string' ? rawBaseUrl : 'http://localhost:8088'
+// Si se especifica VITE_API_BASE_URL (incluso vacio "" para Docker/Nginx same-origin), se respeta.
+// Si no: en produccion usa el mismo origen (proxy /api de Vercel) y en desarrollo http://localhost:8088
+const apiBaseUrl =
+  typeof rawBaseUrl === 'string' ? rawBaseUrl : import.meta.env.PROD ? '' : 'http://localhost:8088'
 
 const api = axios.create({
   baseURL: apiBaseUrl,
