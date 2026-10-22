@@ -748,4 +748,33 @@ Existen dos alternativas estándar para conectar el frontend de Vercel con el ba
 
 ---
 
+## 17. DESPLIEGUE EN LA NUBE (AZURE SQL + RENDER)
+
+El proyecto quedó desplegado en tres piezas gratuitas:
+
+```
+Navegador ──> Vercel (frontend) ──/api──> Render (backend) ──> Azure SQL (base de datos)
+```
+
+**1. Base de datos en Azure SQL**
+- Se creó una **Azure SQL Database** llamada `AbastixDB` con la **oferta gratuita** de Azure for Students.
+- El servidor es `abastix-main.database.windows.net` y usa **autenticación de SQL** (usuario y contraseña).
+- La región tiene que ser una permitida por la suscripción de estudiante (Chile Central fue rechazada).
+- En **Seguridad → Redes** se abrió el firewall para la PC local y para Render.
+- Las tablas y datos de ejemplo se cargaron con [`sql/AbastixDB.sql`](sql/AbastixDB.sql) desde VS Code, sin las líneas de `CREATE DATABASE` y `USE`.
+
+**2. Backend en Render**
+- Se creó un **Web Service** desde el repositorio, con **Language: Docker** (no Node).
+- Usa el Dockerfile `./backend/Dockerfile`, con contexto `.` y health check en `/api/auth/csrf`.
+- La conexión a Azure y la seguridad se configuran **solo con variables de entorno en Render**: `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JWT_SECRET`, `JWT_COOKIE_SECURE=true`, `JWT_COOKIE_SAME_SITE=Lax` y `PORT=8088`.
+- No se usa RabbitMQ en la nube: el backend funciona sin él.
+
+**3. Frontend en Vercel**
+- [`frontend/vercel.json`](frontend/vercel.json) reenvía `/api` al backend de Render, así frontend y backend comparten dominio y las cookies y el CSRF funcionan.
+- `VITE_API_BASE_URL` apunta a la URL del propio frontend en Vercel.
+
+La guía completa paso a paso, con todos los campos a llenar y la solución de errores comunes, está en [`DESPLIEGUE.md`](DESPLIEGUE.md).
+
+---
+
 *Abastix — Sistema de Gestión Comercial y Monorepo Dockerizado. Documentación técnica centralizada.*
