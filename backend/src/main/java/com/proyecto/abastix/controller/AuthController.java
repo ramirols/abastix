@@ -102,6 +102,9 @@ public class AuthController {
     public ResponseEntity<Map<String, String>> csrf(HttpServletRequest request) {
         CsrfToken token = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
         if (token == null) {
+            token = (CsrfToken) request.getAttribute("_csrf");
+        }
+        if (token == null) {
             return ResponseEntity.ok(Map.of());
         }
         return ResponseEntity.ok(Map.of(

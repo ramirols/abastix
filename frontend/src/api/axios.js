@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-function getCookie(name) {
+export function getCookie(name) {
   const match = document.cookie.match(new RegExp('(^|;\\s*)(' + name + ')=([^;]*)'))
   return match ? decodeURIComponent(match[3]) : null
 }
@@ -12,17 +12,43 @@ const apiBaseUrl = typeof rawBaseUrl === 'string' ? rawBaseUrl : 'http://localho
 const api = axios.create({
   baseURL: apiBaseUrl,
   withCredentials: true,
+  withXSRFToken: true,
+  xsrfCookieName: 'XSRF-TOKEN',
+  xsrfHeaderName: 'X-XSRF-TOKEN',
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
+let csrfPromise = null
+
+export async function initCsrf() {
+  if (!csrfPromise) {
+    csrfPromise = axios
+      .get(`${apiBaseUrl}/api/auth/csrf`, { withCredentials: true })
+      .finally(() => {
+        csrfPromise = null
+      })
+  }
+  return csrfPromise
+}
+
 // Adjuntar token CSRF en operaciones que modifican datos
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
   const method = (config.method || 'get').toUpperCase()
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+    const isPublicAuth =
+      config.url?.includes('/api/auth/login') || config.url?.includes('/api/auth/refresh')
+    if (!isPublicAuth && !getCookie('XSRF-TOKEN')) {
+      try {
+        await initCsrf()
+      } catch {
+        // Continuar si falla la peticion de inicializacion
+      }
+    }
+
     const xsrfToken = getCookie('XSRF-TOKEN')
-    if (xsrfToken) {
+    if (xsrfToken && !config.headers['X-XSRF-TOKEN']) {
       config.headers['X-XSRF-TOKEN'] = xsrfToken
     }
   }

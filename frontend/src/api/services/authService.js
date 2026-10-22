@@ -1,9 +1,9 @@
-import api from '../axios'
+import api, { initCsrf } from '../axios'
 
 export const authService = {
   async getCsrf() {
     try {
-      const { data } = await api.get('/api/auth/csrf')
+      const { data } = await initCsrf()
       return data
     } catch {
       return null
@@ -11,9 +11,11 @@ export const authService = {
   },
 
   async login(email, password) {
-    // Asegurar cookie CSRF previa si es posible
+    // Asegurar cookie CSRF previa
     await this.getCsrf()
     const { data } = await api.post('/api/auth/login', { email, password })
+    // Refrescar cookie CSRF tras autenticación
+    await this.getCsrf()
     return data.user
   },
 

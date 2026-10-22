@@ -14,6 +14,7 @@ export function AuthProvider({ children }) {
 
     async function checkSession() {
       try {
+        await authService.getCsrf()
         const userData = await authService.getMe()
         if (mounted) {
           setUser(userData)
