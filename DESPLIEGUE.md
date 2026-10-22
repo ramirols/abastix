@@ -20,7 +20,7 @@ El navegador solo habla con Vercel; Vercel reenvía `/api` a Render, y así las 
 
 Tres decisiones que explican el resto de la guía:
 
-- **Azure SQL y no TiDB Cloud.** TiDB es compatible con MySQL; Abastix usa SQL Server (driver `mssql-jdbc`, dialecto SQLServer, script en T-SQL). Azure SQL no requiere cambios.
+- **Azure SQL.** Abastix usa SQL Server (driver `mssql-jdbc`, dialecto SQLServer, script en T-SQL), y Azure SQL es SQL Server administrado, así que no requiere cambios.
 - **Render con Docker y no Node.** Render detecta Node por el `package.json` de la raíz, pero el backend se construye con [`backend/Dockerfile`](backend/Dockerfile).
 - **Sin RabbitMQ.** Los envíos a RabbitMQ están dentro de `try/catch` y las notificaciones se guardan directo en la base, así que la app funciona sin broker.
 

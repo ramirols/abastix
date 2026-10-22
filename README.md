@@ -748,32 +748,45 @@ Existen dos alternativas estándar para conectar el frontend de Vercel con el ba
 
 ---
 
-## 17. DESPLIEGUE EN LA NUBE (AZURE SQL + RENDER)
+## 17. DESPLIEGUE EN LA NUBE (AZURE SQL + RENDER + VERCEL + CLOUDAMQP)
 
-El proyecto quedó desplegado en tres piezas gratuitas:
+El proyecto está desplegado en cuatro servicios gratuitos:
 
 ```
-Navegador ──> Vercel (frontend) ──/api──> Render (backend) ──> Azure SQL (base de datos)
+Usuario ──> Vercel (frontend) ──/api──> Render (backend) ──> Azure SQL (base de datos)
+                                              │
+                                              └──AMQP──> CloudAMQP en AWS (RabbitMQ)
 ```
 
-**1. Base de datos en Azure SQL**
-- Se creó una **Azure SQL Database** llamada `AbastixDB` con la **oferta gratuita** de Azure for Students.
-- El servidor es `abastix-main.database.windows.net` y usa **autenticación de SQL** (usuario y contraseña).
-- La región tiene que ser una permitida por la suscripción de estudiante (Chile Central fue rechazada).
-- En **Seguridad → Redes** se abrió el firewall para la PC local y para Render.
-- Las tablas y datos de ejemplo se cargaron con [`sql/AbastixDB.sql`](sql/AbastixDB.sql) desde VS Code, sin las líneas de `CREATE DATABASE` y `USE`.
+| Pieza | Servicio | URL / recurso |
+| --- | --- | --- |
+| Frontend (React + Vite) | Vercel | [https://abastix-gestion-inteligente.vercel.app](https://abastix-gestion-inteligente.vercel.app) |
+| Backend (Spring Boot en Docker) | Render | `https://abastix.onrender.com` |
+| Base de datos (SQL Server) | Azure SQL Database | servidor `abastix-main.database.windows.net`, base `AbastixDB` |
+| Mensajería (RabbitMQ) | CloudAMQP, alojado en AWS | instancia `abastix`, plan Little Lemur (gratis) |
 
-**2. Backend en Render**
-- Se creó un **Web Service** desde el repositorio, con **Language: Docker** (no Node).
-- Usa el Dockerfile `./backend/Dockerfile`, con contexto `.` y health check en `/api/auth/csrf`.
-- La conexión a Azure y la seguridad se configuran **solo con variables de entorno en Render**: `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JWT_SECRET`, `JWT_COOKIE_SECURE=true`, `JWT_COOKIE_SAME_SITE=Lax` y `PORT=8088`.
-- No se usa RabbitMQ en la nube: el backend funciona sin él.
+**1. Azure SQL (base de datos)**
+- Base `AbastixDB` creada con la oferta gratuita de Azure for Students y autenticación de SQL.
+- Firewall abierto en **Seguridad → Redes** para la PC local y para Render.
+- Datos de ejemplo cargados con [`sql/AbastixDB.sql`](sql/AbastixDB.sql) (desde la línea 15, sin `CREATE DATABASE` ni `USE`).
 
-**3. Frontend en Vercel**
-- [`frontend/vercel.json`](frontend/vercel.json) reenvía `/api` al backend de Render, así frontend y backend comparten dominio y las cookies y el CSRF funcionan.
-- `VITE_API_BASE_URL` apunta a la URL del propio frontend en Vercel.
+**2. Render (backend)**
+- Web Service con **Language: Docker**, Dockerfile `./backend/Dockerfile` y health check `/api/auth/csrf`.
+- La conexión a Azure se configura con variables de entorno en Render: `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JWT_SECRET`, `JWT_COOKIE_SECURE=true`, `JWT_COOKIE_SAME_SITE=Lax` y `PORT=8088`.
 
-La guía completa paso a paso, con todos los campos a llenar y la solución de errores comunes, está en [`DESPLIEGUE.md`](DESPLIEGUE.md).
+**3. Vercel (frontend)**
+- Proyecto importado desde el repositorio con **Root Directory: `frontend`** y preset **Vite**.
+- [`frontend/vercel.json`](frontend/vercel.json) reenvía `/api` al backend de Render, así frontend y backend comparten dominio y las cookies de sesión funcionan.
+
+**4. CloudAMQP (RabbitMQ)**
+- Instancia RabbitMQ creada en CloudAMQP sobre **Amazon Web Services (AWS)**, con el plan gratuito Little Lemur.
+- Se conecta al backend con dos variables de entorno en Render: `SPRING_RABBITMQ_ADDRESSES` (la URL `amqps://` de CloudAMQP) y `RABBITMQ_AUTO_STARTUP=true`.
+- Usa el exchange `abastix.exchange` con las colas `log.queue` (auditoría, guardada en la tabla `audit_logs`) y `notifications.queue` (pedidos confirmados y alertas de stock bajo, guardadas en `notifications`).
+- Las fechas que guarda el backend están en hora UTC (Perú es UTC-5).
+
+> En el plan gratuito de Render el backend se apaga tras 15 minutos sin uso; el primer acceso puede tardar 1 a 3 minutos.
+
+La guía completa paso a paso está en [`DESPLIEGUE.md`](DESPLIEGUE.md).
 
 ---
 
